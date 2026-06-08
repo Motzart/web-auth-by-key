@@ -99,7 +99,12 @@ export async function finishRegistration(req: NextRequest, body: unknown) {
   const { credentialID, credentialPublicKey, counter } = registrationInfo
   const storedCredentialID = toBase64URLString(credentialID)
   const rawTransports = (body as { response?: { transports?: string[] } }).response?.transports || []
-  const securityTransports = extractSecurityKeyTransports(rawTransports)
+  let securityTransports = extractSecurityKeyTransports(rawTransports)
+
+  // YubiKey с USB почти всегда имеет NFC — без этого iPhone не найдёт ключ при входе.
+  if (securityTransports.includes('usb') && !securityTransports.includes('nfc')) {
+    securityTransports = [...securityTransports, 'nfc']
+  }
 
   if (securityTransports.length === 0) {
     throw new AuthError(

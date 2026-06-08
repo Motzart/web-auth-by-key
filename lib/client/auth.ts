@@ -11,6 +11,36 @@ function isIOS() {
   return typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent)
 }
 
+function isIOSChrome() {
+  return isIOS() && /crios/i.test(navigator.userAgent)
+}
+
+function formatWebAuthnError(err: unknown, mode: 'login' | 'register'): never {
+  const name = err instanceof DOMException ? err.name : ''
+  const raw = err instanceof Error ? err.message : String(err)
+
+  if (name === 'NotAllowedError' || /not allowed by the user agent/i.test(raw)) {
+    if (isIOSChrome()) {
+      throw new Error(
+        'Chrome на iPhone не поддерживает YubiKey по NFC. Открой этот сайт в Safari и попробуй снова.'
+      )
+    }
+    if (isIOS()) {
+      throw new Error(
+        mode === 'register'
+          ? 'Safari отклонил запрос. Разреши NFC, приложи YubiKey к верхней части задней панели и не закрывай окно.'
+          : 'Safari отклонил запрос. Если ключ привязывал на компе — на iPhone нужен NFC: приложи YubiKey к верху телефона. Или зарегистрируй ключ заново на вкладке «Первый раз» в Safari.'
+      )
+    }
+    throw new Error(
+      'Браузер отклонил запрос. Выбери «USB security key», не Passkey/QR, и коснись YubiKey.'
+    )
+  }
+
+  if (err instanceof Error) throw err
+  throw new Error(raw || 'Ошибка WebAuthn')
+}
+
 function assertWebAuthnSupported() {
   if (browserSupportsWebAuthn()) return
 
@@ -33,21 +63,34 @@ export function isWebAuthnAvailable() {
 
 const SECURITY_KEY_HINTS = ['security-key'] as const
 
+function withSecurityKeyHints<T extends PublicKeyCredentialCreationOptionsJSON | PublicKeyCredentialRequestOptionsJSON>(
+  options: T
+): T {
+  if (isIOS()) return options
+  return { ...options, hints: [...SECURITY_KEY_HINTS] }
+}
+
 export async function registerWithYubiKey() {
   assertWebAuthnSupported()
   const options = await api.post<PublicKeyCredentialCreationOptionsJSON>('/api/auth/register/begin')
-  const credential = await startRegistration({
-    optionsJSON: { ...options, hints: [...SECURITY_KEY_HINTS] },
-  })
+  let credential
+  try {
+    credential = await startRegistration({ optionsJSON: withSecurityKeyHints(options) })
+  } catch (err) {
+    formatWebAuthnError(err, 'register')
+  }
   return api.post('/api/auth/register/finish', credential)
 }
 
 export async function loginWithYubiKey() {
   assertWebAuthnSupported()
   const options = await api.post<PublicKeyCredentialRequestOptionsJSON>('/api/auth/login/begin')
-  const assertion = await startAuthentication({
-    optionsJSON: { ...options, hints: [...SECURITY_KEY_HINTS] },
-  })
+  let assertion
+  try {
+    assertion = await startAuthentication({ optionsJSON: withSecurityKeyHints(options) })
+  } catch (err) {
+    formatWebAuthnError(err, 'login')
+  }
   return api.post('/api/auth/login/finish', assertion)
 }
 

@@ -25,12 +25,15 @@ export default function LoginPage() {
   const [webAuthnOk, setWebAuthnOk] = useState(false)
   const [needsHttps, setNeedsHttps] = useState(false)
   const [isIOS, setIsIOS] = useState(false)
+  const [isIOSChrome, setIsIOSChrome] = useState(false)
 
   useEffect(() => {
     getMe().then(() => router.push('/dashboard')).catch(() => {})
     setWebAuthnOk(isWebAuthnAvailable())
     setNeedsHttps(typeof window !== 'undefined' && !window.isSecureContext)
-    setIsIOS(/iphone|ipad|ipod/i.test(navigator.userAgent))
+    const ua = navigator.userAgent
+    setIsIOS(/iphone|ipad|ipod/i.test(ua))
+    setIsIOSChrome(/iphone|ipad|ipod/i.test(ua) && /crios/i.test(ua))
   }, [router])
 
   async function handleLogin(e: React.FormEvent) {
@@ -96,6 +99,15 @@ export default function LoginPage() {
           ))}
         </div>
 
+        {isIOSChrome && (
+          <div style={{ ...styles.status, ...styles.status_error, width: '100%' }}>
+            <span style={statusDot('error')} />
+            <span>
+              Chrome на iPhone не умеет YubiKey по NFC. Скопируй адрес и открой сайт в Safari.
+            </span>
+          </div>
+        )}
+
         {!webAuthnOk && (
           <div style={{ ...styles.status, ...styles.status_error, width: '100%' }}>
             <span style={statusDot('error')} />
@@ -134,13 +146,17 @@ export default function LoginPage() {
         )}
 
         <p style={styles.hint}>
-          {tab === 'login'
-            ? 'В окне Chrome выбери «Use your security key» (внизу), не QR-код. Вставь YubiKey и коснись.'
-            : 'В окне Chrome выбери «Use your security key», не Passkey по QR. Вставь YubiKey и коснись.'}
+          {isIOS
+            ? tab === 'login'
+              ? 'Safari: приложи YubiKey NFC к верхней части задней панели и подержи, пока ключ не мигнёт.'
+              : 'Safari: вкладка «Первый раз» → приложи YubiKey к верху телефона для привязки по NFC.'
+            : tab === 'login'
+              ? 'В окне Chrome выбери «Use your security key» (внизу), не QR-код. Вставь YubiKey и коснись.'
+              : 'В окне Chrome выбери «Use your security key», не Passkey по QR. Вставь YubiKey и коснись.'}
         </p>
         <p style={{ ...styles.hint, marginTop: -8 }}>
           {isIOS
-            ? 'iPhone: Safari + HTTPS. Ключ с localhost на телефоне не работает.'
+            ? 'iPhone: только Safari (не Chrome). Ключ с localhost не работает — регистрируй на этом домене.'
             : 'Это окно браузера, не приложения — так же было в старом клиенте.'}
         </p>
       </div>

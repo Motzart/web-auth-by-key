@@ -47,6 +47,13 @@ export function credentialTransportsForClient(credential: StoredCredential, req:
   const transports = extractSecurityKeyTransports(credential.transports)
   const ua = req.headers.get('user-agent') || ''
   const isMobile = /android|iphone|ipad|ipod/i.test(ua)
-  if (isMobile && transports.includes('nfc')) return ['nfc']
+
+  if (isMobile) {
+    // Ключ, зарегистрированный по USB на десктопе, часто сохраняет transports: ['usb'].
+    // iPhone не умеет USB WebAuthn — подсказываем NFC (YubiKey 5/5C NFC).
+    if (transports.includes('nfc')) return ['nfc']
+    return ['nfc']
+  }
+
   return transports.length ? transports : SECURITY_KEY_TRANSPORTS
 }
