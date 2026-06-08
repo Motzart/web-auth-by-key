@@ -165,11 +165,14 @@ export async function beginLogin(req: NextRequest) {
     )
   }
 
-  const allowCredentials = securityCredentials.map(c => ({
-    id: c.credentialID,
-    type: 'public-key' as const,
-    transports: credentialTransportsForClient(c, req) as AuthenticatorTransport[],
-  }))
+  const allowCredentials = securityCredentials.map(c => {
+    const transports = credentialTransportsForClient(c, req)
+    return {
+      id: c.credentialID,
+      type: 'public-key' as const,
+      ...(transports ? { transports } : {}),
+    }
+  })
 
   const options = await generateAuthenticationOptions({
     rpID: webAuthn.rpId,

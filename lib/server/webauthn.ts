@@ -34,7 +34,14 @@ export function isAllowedOrigin(origin: string | null): boolean {
 }
 
 export function getWebAuthnContext(req: NextRequest) {
-  const origin = req.headers.get('origin')
+  let origin = req.headers.get('origin')
+
+  if (!origin) {
+    const host = req.headers.get('host')
+    const proto = req.headers.get('x-forwarded-proto') ?? 'https'
+    if (host) origin = `${proto}://${host}`
+  }
+
   if (!origin || !isAllowedOrigin(origin)) {
     throw new Error(
       'Открой сайт по правильному адресу (localhost или домен Vercel). Для телефона в Wi‑Fi — IP компьютера.'
@@ -43,17 +50,17 @@ export function getWebAuthnContext(req: NextRequest) {
   return { origin, rpId: new URL(origin).hostname }
 }
 
-export function credentialTransportsForClient(credential: StoredCredential, req: NextRequest) {
-  const transports = extractSecurityKeyTransports(credential.transports)
+export function credentialTransportsForClient(
+  credential: StoredCredential,
+  req: NextRequest
+): AuthenticatorTransport[] | undefined {
   const ua = req.headers.get('user-agent') || ''
   const isMobile = /android|iphone|ipad|ipod/i.test(ua)
 
-  if (isMobile) {
-    // Ключ, зарегистрированный по USB на десктопе, часто сохраняет transports: ['usb'].
-    // iPhone не умеет USB WebAuthn — подсказываем NFC (YubiKey 5/5C NFC).
-    if (transports.includes('nfc')) return ['nfc']
-    return ['nfc']
-  }
+  // Safari на iPhone нестабильно реагирует на жёсткий transports: ['nfc'] / ['usb'].
+  // Без подсказки браузер сам выберет NFC.
+  if (isMobile) return undefined
 
-  return transports.length ? transports : SECURITY_KEY_TRANSPORTS
+  const transports = extractSecurityKeyTransports(credential.transports)
+  return (transports.length ? transports : SECURITY_KEY_TRANSPORTS) as AuthenticatorTransport[]
 }

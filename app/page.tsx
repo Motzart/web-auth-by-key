@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { registerWithYubiKey, loginWithYubiKey, getMe, isWebAuthnAvailable } from '@/lib/client/auth'
 
@@ -26,6 +26,7 @@ export default function LoginPage() {
   const [needsHttps, setNeedsHttps] = useState(false)
   const [isIOS, setIsIOS] = useState(false)
   const [isIOSChrome, setIsIOSChrome] = useState(false)
+  const inFlightRef = useRef(false)
 
   useEffect(() => {
     getMe().then(() => router.push('/dashboard')).catch(() => {})
@@ -38,37 +39,37 @@ export default function LoginPage() {
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
+    if (inFlightRef.current) return
+    inFlightRef.current = true
+    setStatus({ type: 'loading', msg: STEPS_LOGIN[1] })
     try {
-      setStatus({ type: 'loading', msg: STEPS_LOGIN[0] })
-      await new Promise(r => setTimeout(r, 350))
-      setStatus({ type: 'loading', msg: STEPS_LOGIN[1] })
       await loginWithYubiKey()
-      setStatus({ type: 'loading', msg: STEPS_LOGIN[2] })
-      await new Promise(r => setTimeout(r, 300))
       setStatus({ type: 'success', msg: 'Авторизация прошла успешно!' })
       setTimeout(() => router.push('/dashboard'), 600)
     } catch (err: unknown) {
       const error = err as Error & { status?: number }
       const msg = error?.message || 'Ошибка авторизации'
       setStatus({ type: 'error', msg })
+    } finally {
+      inFlightRef.current = false
     }
   }
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault()
+    if (inFlightRef.current) return
+    inFlightRef.current = true
+    setStatus({ type: 'loading', msg: STEPS_REG[1] })
     try {
-      setStatus({ type: 'loading', msg: STEPS_REG[0] })
-      await new Promise(r => setTimeout(r, 350))
-      setStatus({ type: 'loading', msg: STEPS_REG[1] })
       await registerWithYubiKey()
-      setStatus({ type: 'loading', msg: STEPS_REG[2] })
-      await new Promise(r => setTimeout(r, 300))
       setStatus({ type: 'success', msg: 'Ключ привязан! Входим...' })
       setTimeout(() => router.push('/dashboard'), 600)
     } catch (err: unknown) {
       const error = err as Error
       const msg = error?.message || 'Ошибка регистрации'
       setStatus({ type: 'error', msg })
+    } finally {
+      inFlightRef.current = false
     }
   }
 
@@ -148,8 +149,8 @@ export default function LoginPage() {
         <p style={styles.hint}>
           {isIOS
             ? tab === 'login'
-              ? 'Safari: приложи YubiKey NFC к верхней части задней панели и подержи, пока ключ не мигнёт.'
-              : 'Safari: вкладка «Первый раз» → приложи YubiKey к верху телефона для привязки по NFC.'
+              ? 'Safari: сразу после нажатия приложи YubiKey к верху телефона и держи 2–3 сек (до мигания).'
+              : 'Safari: нажми кнопку и сразу приложи YubiKey к верху телефона — не жди загрузки.'
             : tab === 'login'
               ? 'В окне Chrome выбери «Use your security key» (внизу), не QR-код. Вставь YubiKey и коснись.'
               : 'В окне Chrome выбери «Use your security key», не Passkey по QR. Вставь YubiKey и коснись.'}

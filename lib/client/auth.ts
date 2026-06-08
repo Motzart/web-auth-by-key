@@ -15,11 +15,16 @@ function isIOSChrome() {
   return isIOS() && /crios/i.test(navigator.userAgent)
 }
 
-function formatWebAuthnError(err: unknown, mode: 'login' | 'register'): never {
+function isNotAllowedError(err: unknown) {
   const name = err instanceof DOMException ? err.name : ''
   const raw = err instanceof Error ? err.message : String(err)
+  return name === 'NotAllowedError' || /not allowed by the user agent/i.test(raw)
+}
 
-  if (name === 'NotAllowedError' || /not allowed by the user agent/i.test(raw)) {
+function formatWebAuthnError(err: unknown, mode: 'login' | 'register'): never {
+  const raw = err instanceof Error ? err.message : String(err)
+
+  if (isNotAllowedError(err)) {
     if (isIOSChrome()) {
       throw new Error(
         'Chrome на iPhone не поддерживает YubiKey по NFC. Открой этот сайт в Safari и попробуй снова.'
@@ -28,8 +33,8 @@ function formatWebAuthnError(err: unknown, mode: 'login' | 'register'): never {
     if (isIOS()) {
       throw new Error(
         mode === 'register'
-          ? 'Safari отклонил запрос. Разреши NFC, приложи YubiKey к верхней части задней панели и не закрывай окно.'
-          : 'Safari отклонил запрос. Если ключ привязывал на компе — на iPhone нужен NFC: приложи YubiKey к верху телефона. Или зарегистрируй ключ заново на вкладке «Первый раз» в Safari.'
+          ? 'Safari отклонил запрос. Сразу после нажатия приложи YubiKey к верхней части задней панели и держи 2–3 сек.'
+          : 'Safari отклонил запрос. Нажми кнопку снова и сразу приложи YubiKey к верху телефона — не жди появления текста.'
       )
     }
     throw new Error(
@@ -39,6 +44,30 @@ function formatWebAuthnError(err: unknown, mode: 'login' | 'register'): never {
 
   if (err instanceof Error) throw err
   throw new Error(raw || 'Ошибка WebAuthn')
+}
+
+const IOS_WEBAUTHN_ATTEMPTS = 2
+
+async function runWebAuthnCeremony<T extends PublicKeyCredentialCreationOptionsJSON | PublicKeyCredentialRequestOptionsJSON>(
+  beginPath: string,
+  start: (optionsJSON: T) => Promise<unknown>,
+  mode: 'login' | 'register'
+) {
+  let lastError: unknown
+
+  for (let attempt = 0; attempt < (isIOS() ? IOS_WEBAUTHN_ATTEMPTS : 1); attempt++) {
+    try {
+      const options = await api.post<T>(beginPath)
+      return await start(withSecurityKeyHints(options))
+    } catch (err) {
+      lastError = err
+      if (!isIOS() || !isNotAllowedError(err) || attempt === IOS_WEBAUTHN_ATTEMPTS - 1) {
+        formatWebAuthnError(err, mode)
+      }
+    }
+  }
+
+  formatWebAuthnError(lastError, mode)
 }
 
 function assertWebAuthnSupported() {
@@ -72,25 +101,21 @@ function withSecurityKeyHints<T extends PublicKeyCredentialCreationOptionsJSON |
 
 export async function registerWithYubiKey() {
   assertWebAuthnSupported()
-  const options = await api.post<PublicKeyCredentialCreationOptionsJSON>('/api/auth/register/begin')
-  let credential
-  try {
-    credential = await startRegistration({ optionsJSON: withSecurityKeyHints(options) })
-  } catch (err) {
-    formatWebAuthnError(err, 'register')
-  }
+  const credential = await runWebAuthnCeremony(
+    '/api/auth/register/begin',
+    options => startRegistration({ optionsJSON: options as PublicKeyCredentialCreationOptionsJSON }),
+    'register'
+  )
   return api.post('/api/auth/register/finish', credential)
 }
 
 export async function loginWithYubiKey() {
   assertWebAuthnSupported()
-  const options = await api.post<PublicKeyCredentialRequestOptionsJSON>('/api/auth/login/begin')
-  let assertion
-  try {
-    assertion = await startAuthentication({ optionsJSON: withSecurityKeyHints(options) })
-  } catch (err) {
-    formatWebAuthnError(err, 'login')
-  }
+  const assertion = await runWebAuthnCeremony(
+    '/api/auth/login/begin',
+    options => startAuthentication({ optionsJSON: options as PublicKeyCredentialRequestOptionsJSON }),
+    'login'
+  )
   return api.post('/api/auth/login/finish', assertion)
 }
 
