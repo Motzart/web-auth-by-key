@@ -21,6 +21,8 @@ import {
   USER_VERIFICATION,
   getWebAuthnContext,
   credentialTransportsForClient,
+  isMobileUserAgent,
+  userVerificationForRequest,
 } from './webauthn'
 import { getSession } from './session'
 
@@ -43,11 +45,16 @@ export async function beginRegistration(req: NextRequest) {
     userDisplayName: 'YubiKey',
     attestationType: 'none',
     excludeCredentials,
-    authenticatorSelection: {
-      authenticatorAttachment: 'cross-platform',
-      userVerification: USER_VERIFICATION,
-      residentKey: 'discouraged',
-    },
+    authenticatorSelection: isMobileUserAgent(req)
+      ? {
+          userVerification: userVerificationForRequest(req),
+          residentKey: 'preferred',
+        }
+      : {
+          authenticatorAttachment: 'cross-platform',
+          userVerification: USER_VERIFICATION,
+          residentKey: 'discouraged',
+        },
   })
 
   const session = await getSession()
@@ -177,8 +184,8 @@ export async function beginLogin(req: NextRequest) {
   const options = await generateAuthenticationOptions({
     rpID: webAuthn.rpId,
     allowCredentials,
-    userVerification: USER_VERIFICATION,
-    timeout: 60000,
+    userVerification: userVerificationForRequest(req),
+    timeout: isMobileUserAgent(req) ? 120000 : 60000,
   })
 
   const session = await getSession()

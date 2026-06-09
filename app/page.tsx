@@ -122,6 +122,17 @@ export default function LoginPage() {
           </div>
         )}
 
+        {loading && isIOS && (
+          <div style={{ ...styles.status, ...styles.status_loading, width: '100%' }}>
+            <span style={statusDot('loading')} />
+            <span>
+              {tab === 'login'
+                ? '① В меню Safari нажми «Security Key». ② Вверху появится NFC — сразу приложи YubiKey к камере (верх телефона) и держи 3–5 сек.'
+                : '① В меню Safari нажми «Security Key». ② Приложи YubiKey NFC к верху телефона (у камеры) и держи до мигания.'}
+            </span>
+          </div>
+        )}
+
         <form onSubmit={tab === 'login' ? handleLogin : handleRegister} style={{ width: '100%' }}>
           <button
             type="submit"
@@ -149,15 +160,15 @@ export default function LoginPage() {
         <p style={styles.hint}>
           {isIOS
             ? tab === 'login'
-              ? 'Safari: сразу после нажатия приложи YubiKey к верху телефона и держи 2–3 сек (до мигания).'
-              : 'Safari: нажми кнопку и сразу приложи YubiKey к верху телефона — не жди загрузки.'
+              ? 'iPhone 13: NFC-антенна у камеры (верх задней панели). После «Security Key» в меню — сразу поднеси ключ, не жди.'
+              : 'Регистрация только в Safari на этом домене. После «Security Key» — приложи YubiKey к верху телефона.'
             : tab === 'login'
               ? 'В окне Chrome выбери «Use your security key» (внизу), не QR-код. Вставь YubiKey и коснись.'
               : 'В окне Chrome выбери «Use your security key», не Passkey по QR. Вставь YubiKey и коснись.'}
         </p>
         <p style={{ ...styles.hint, marginTop: -8 }}>
           {isIOS
-            ? 'iPhone: только Safari (не Chrome). Ключ с localhost не работает — регистрируй на этом домене.'
+            ? 'Если зависло после выбора ключа — перезагрузи iPhone (баг Safari) и зарегистрируй ключ на вкладке «Первый раз».'
             : 'Это окно браузера, не приложения — так же было в старом клиенте.'}
         </p>
       </div>

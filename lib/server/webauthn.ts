@@ -8,6 +8,15 @@ import {
 export const RP_NAME = 'YubiKey Demo'
 export const USER_VERIFICATION = 'discouraged' as const
 
+export function isMobileUserAgent(req: NextRequest): boolean {
+  const ua = req.headers.get('user-agent') || ''
+  return /android|iphone|ipad|ipod/i.test(ua)
+}
+
+export function userVerificationForRequest(req: NextRequest): 'discouraged' | 'preferred' {
+  return isMobileUserAgent(req) ? 'preferred' : USER_VERIFICATION
+}
+
 export function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false
 
@@ -54,12 +63,10 @@ export function credentialTransportsForClient(
   credential: StoredCredential,
   req: NextRequest
 ): AuthenticatorTransport[] | undefined {
-  const ua = req.headers.get('user-agent') || ''
-  const isMobile = /android|iphone|ipad|ipod/i.test(ua)
-
-  // Safari на iPhone нестабильно реагирует на жёсткий transports: ['nfc'] / ['usb'].
-  // Без подсказки браузер сам выберет NFC.
-  if (isMobile) return undefined
+  if (isMobileUserAgent(req)) {
+    // iPhone читает YubiKey только по NFC — явная подсказка убирает «зависание» после выбора Security Key.
+    return ['nfc']
+  }
 
   const transports = extractSecurityKeyTransports(credential.transports)
   return (transports.length ? transports : SECURITY_KEY_TRANSPORTS) as AuthenticatorTransport[]

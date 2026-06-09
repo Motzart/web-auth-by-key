@@ -21,8 +21,24 @@ function isNotAllowedError(err: unknown) {
   return name === 'NotAllowedError' || /not allowed by the user agent/i.test(raw)
 }
 
+function isTimeoutError(err: unknown) {
+  const name = err instanceof DOMException ? err.name : ''
+  return name === 'TimeoutError' || /timed out|timeout/i.test(err instanceof Error ? err.message : String(err))
+}
+
 function formatWebAuthnError(err: unknown, mode: 'login' | 'register'): never {
   const raw = err instanceof Error ? err.message : String(err)
+
+  if (isTimeoutError(err)) {
+    if (isIOS()) {
+      throw new Error(
+        mode === 'register'
+          ? 'Время вышло. Нажми снова → Security Key → сразу приложи YubiKey к верху телефона (у камеры) и держи до мигания.'
+          : 'Время вышло. Нажми снова → Security Key → приложи YubiKey к верху телефона у камеры и держи 3–5 сек.'
+      )
+    }
+    throw new Error('Время ожидания ключа истекло. Попробуй ещё раз.')
+  }
 
   if (isNotAllowedError(err)) {
     if (isIOSChrome()) {
@@ -32,9 +48,7 @@ function formatWebAuthnError(err: unknown, mode: 'login' | 'register'): never {
     }
     if (isIOS()) {
       throw new Error(
-        mode === 'register'
-          ? 'Safari отклонил запрос. Сразу после нажатия приложи YubiKey к верхней части задней панели и держи 2–3 сек.'
-          : 'Safari отклонил запрос. Нажми кнопку снова и сразу приложи YubiKey к верху телефона — не жди появления текста.'
+        'Safari отменил запрос. Если раньше закрывал окно — перезагрузи iPhone. Затем: кнопка → Security Key → приложи YubiKey к верху телефона (у камеры).'
       )
     }
     throw new Error(
@@ -44,30 +58,6 @@ function formatWebAuthnError(err: unknown, mode: 'login' | 'register'): never {
 
   if (err instanceof Error) throw err
   throw new Error(raw || 'Ошибка WebAuthn')
-}
-
-const IOS_WEBAUTHN_ATTEMPTS = 2
-
-async function runWebAuthnCeremony<T extends PublicKeyCredentialCreationOptionsJSON | PublicKeyCredentialRequestOptionsJSON>(
-  beginPath: string,
-  start: (optionsJSON: T) => Promise<unknown>,
-  mode: 'login' | 'register'
-) {
-  let lastError: unknown
-
-  for (let attempt = 0; attempt < (isIOS() ? IOS_WEBAUTHN_ATTEMPTS : 1); attempt++) {
-    try {
-      const options = await api.post<T>(beginPath)
-      return await start(withSecurityKeyHints(options))
-    } catch (err) {
-      lastError = err
-      if (!isIOS() || !isNotAllowedError(err) || attempt === IOS_WEBAUTHN_ATTEMPTS - 1) {
-        formatWebAuthnError(err, mode)
-      }
-    }
-  }
-
-  formatWebAuthnError(lastError, mode)
 }
 
 function assertWebAuthnSupported() {
@@ -95,8 +85,20 @@ const SECURITY_KEY_HINTS = ['security-key'] as const
 function withSecurityKeyHints<T extends PublicKeyCredentialCreationOptionsJSON | PublicKeyCredentialRequestOptionsJSON>(
   options: T
 ): T {
-  if (isIOS()) return options
   return { ...options, hints: [...SECURITY_KEY_HINTS] }
+}
+
+async function runWebAuthnCeremony<T extends PublicKeyCredentialCreationOptionsJSON | PublicKeyCredentialRequestOptionsJSON>(
+  beginPath: string,
+  start: (optionsJSON: T) => Promise<unknown>,
+  mode: 'login' | 'register'
+) {
+  try {
+    const options = await api.post<T>(beginPath)
+    return await start(withSecurityKeyHints(options))
+  } catch (err) {
+    formatWebAuthnError(err, mode)
+  }
 }
 
 export async function registerWithYubiKey() {
