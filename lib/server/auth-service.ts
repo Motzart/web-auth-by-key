@@ -48,7 +48,7 @@ export async function beginRegistration(req: NextRequest) {
     authenticatorSelection: isMobileUserAgent(req)
       ? {
           userVerification: userVerificationForRequest(req),
-          residentKey: 'preferred',
+          residentKey: 'required',
         }
       : {
           authenticatorAttachment: 'cross-platform',
@@ -143,6 +143,7 @@ export async function finishRegistration(req: NextRequest, body: unknown) {
     counter,
     transports: securityTransports,
     registeredRpId: webAuthnRpId,
+    resident: isMobileUserAgent(req),
     addedAt: new Date().toISOString(),
   })
 
@@ -181,14 +182,27 @@ export async function beginLogin(req: NextRequest) {
     }
   })
 
-  const options = await generateAuthenticationOptions({
-    rpID: webAuthn.rpId,
-    allowCredentials,
-    userVerification: userVerificationForRequest(req),
-    timeout: isMobileUserAgent(req) ? 120000 : 60000,
-  })
+  const mobile = isMobileUserAgent(req)
+  const useDiscoverableLogin = mobile && securityCredentials.some(c => c.resident)
+
+  const options = await generateAuthenticationOptions(
+    useDiscoverableLogin
+      ? {
+          rpID: webAuthn.rpId,
+          userVerification: userVerificationForRequest(req),
+          timeout: 120000,
+        }
+      : {
+          rpID: webAuthn.rpId,
+          allowCredentials,
+          userVerification: userVerificationForRequest(req),
+          timeout: mobile ? 120000 : 60000,
+        }
+  )
 
   const session = await getSession()
+  delete session.registrationChallenge
+  delete session.pendingUserId
   session.authChallenge = options.challenge
   session.webAuthnOrigin = webAuthn.origin
   session.webAuthnRpId = webAuthn.rpId
@@ -287,6 +301,16 @@ export async function getMe() {
 export async function logout() {
   const session = await getSession()
   session.destroy()
+}
+
+export async function cancelCeremony() {
+  const session = await getSession()
+  delete session.authChallenge
+  delete session.registrationChallenge
+  delete session.pendingUserId
+  delete session.webAuthnOrigin
+  delete session.webAuthnRpId
+  await session.save()
 }
 
 export class AuthError extends Error {

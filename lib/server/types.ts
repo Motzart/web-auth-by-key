@@ -4,6 +4,8 @@ export interface StoredCredential {
   counter: number
   transports: string[]
   registeredRpId?: string
+  /** Discoverable credential — стабильный NFC-вход на iPhone */
+  resident?: boolean
   addedAt: string
   lastUsed?: string
 }

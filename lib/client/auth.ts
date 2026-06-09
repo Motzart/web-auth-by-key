@@ -33,8 +33,8 @@ function formatWebAuthnError(err: unknown, mode: 'login' | 'register'): never {
     if (isIOS()) {
       throw new Error(
         mode === 'register'
-          ? 'Время вышло. Нажми снова → Security Key → сразу приложи YubiKey к верху телефона (у камеры) и держи до мигания.'
-          : 'Время вышло. Нажми снова → Security Key → приложи YubiKey к верху телефона у камеры и держи 3–5 сек.'
+          ? 'Время вышло. Подожди 5 сек → снова кнопка → Security Key → YubiKey к камере 5 сек.'
+          : 'Время вышло. Подожди 5 сек и попробуй снова. Если ключ регистрировали на компе — привяжи заново на «Первый раз» в Safari.'
       )
     }
     throw new Error('Время ожидания ключа истекло. Попробуй ещё раз.')
@@ -48,7 +48,9 @@ function formatWebAuthnError(err: unknown, mode: 'login' | 'register'): never {
     }
     if (isIOS()) {
       throw new Error(
-        'Safari отменил запрос. Если раньше закрывал окно — перезагрузи iPhone. Затем: кнопка → Security Key → приложи YubiKey к верху телефона (у камеры).'
+        mode === 'login'
+          ? 'Safari отклонил вход. Подожди 5 сек перед повтором. Если ключ с компа — зарегистрируй на «Первый раз» в Safari на этом сайте.'
+          : 'Safari отклонил регистрацию. Подожди 5 сек → Security Key → YubiKey к верху телефона (у камеры).'
       )
     }
     throw new Error(
@@ -81,6 +83,28 @@ export function isWebAuthnAvailable() {
 }
 
 const SECURITY_KEY_HINTS = ['security-key'] as const
+const IOS_CEREMONY_GAP_MS = 5000
+
+let lastIosCeremonyEndedAt = 0
+
+function sleep(ms: number) {
+  return new Promise<void>(resolve => setTimeout(resolve, ms))
+}
+
+async function prepareCeremony() {
+  await api.post('/api/auth/cancel').catch(() => {})
+
+  if (!isIOS()) return
+
+  const elapsed = Date.now() - lastIosCeremonyEndedAt
+  if (lastIosCeremonyEndedAt > 0 && elapsed < IOS_CEREMONY_GAP_MS) {
+    await sleep(IOS_CEREMONY_GAP_MS - elapsed)
+  }
+}
+
+function markCeremonyEnded() {
+  if (isIOS()) lastIosCeremonyEndedAt = Date.now()
+}
 
 function withSecurityKeyHints<T extends PublicKeyCredentialCreationOptionsJSON | PublicKeyCredentialRequestOptionsJSON>(
   options: T
@@ -93,11 +117,14 @@ async function runWebAuthnCeremony<T extends PublicKeyCredentialCreationOptionsJ
   start: (optionsJSON: T) => Promise<unknown>,
   mode: 'login' | 'register'
 ) {
+  await prepareCeremony()
   try {
     const options = await api.post<T>(beginPath)
     return await start(withSecurityKeyHints(options))
   } catch (err) {
     formatWebAuthnError(err, mode)
+  } finally {
+    markCeremonyEnded()
   }
 }
 
@@ -127,4 +154,8 @@ export async function logout() {
 
 export async function getMe() {
   return api.get('/api/auth/me')
+}
+
+export function getIosCeremonyGapMs() {
+  return IOS_CEREMONY_GAP_MS
 }

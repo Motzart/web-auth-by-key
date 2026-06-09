@@ -18,6 +18,19 @@ const STEPS_REG = [
   'Сохраняем публичный ключ...',
 ]
 
+const IOS_LOADING_HINTS = {
+  login: [
+    'Security Key → приложи YubiKey к камере (верх телефона)...',
+    'NFC может занять 10–30 сек — держи ключ не двигая...',
+    'Если не срабатывает — подожди 5 сек и нажми снова...',
+  ],
+  register: [
+    'Security Key → приложи YubiKey к камере (верх телефона)...',
+    'Держи ключ у камеры до мигания (может занять 30 сек)...',
+    'После регистрации на iPhone вход будет стабильнее...',
+  ],
+} as const
+
 export default function LoginPage() {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('login')
@@ -36,6 +49,19 @@ export default function LoginPage() {
     setIsIOS(/iphone|ipad|ipod/i.test(ua))
     setIsIOSChrome(/iphone|ipad|ipod/i.test(ua) && /crios/i.test(ua))
   }, [router])
+
+  useEffect(() => {
+    if (status.type !== 'loading' || !isIOS) return
+
+    const hints = IOS_LOADING_HINTS[tab]
+    let index = 0
+    const interval = setInterval(() => {
+      index = (index + 1) % hints.length
+      setStatus(current => (current.type === 'loading' ? { type: 'loading', msg: hints[index] } : current))
+    }, 9000)
+
+    return () => clearInterval(interval)
+  }, [status.type, isIOS, tab])
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -168,7 +194,7 @@ export default function LoginPage() {
         </p>
         <p style={{ ...styles.hint, marginTop: -8 }}>
           {isIOS
-            ? 'Если зависло после выбора ключа — перезагрузи iPhone (баг Safari) и зарегистрируй ключ на вкладке «Первый раз».'
+            ? 'Ключ с компа на iPhone работает нестабильно. Для надёжного входа: «Первый раз» в Safari → YubiKey по NFC. Между попытками жди 5 сек.'
             : 'Это окно браузера, не приложения — так же было в старом клиенте.'}
         </p>
       </div>
