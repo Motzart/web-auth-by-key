@@ -288,6 +288,124 @@ export async function finishLogin(req: NextRequest, body: { id?: string }) {
   return { ok: true, userId: user.id, username: user.username, presenceMode: !!session.presenceMode }
 }
 
+export async function beginPresenceCheck(req: NextRequest) {
+  const session = await getSession()
+  if (!session.userId || !session.credentialId || !session.presenceMode) {
+    throw new AuthError('Presence mode not active', 400)
+  }
+
+  const webAuthn = getWebAuthnContext(req)
+  const db = await readDB()
+  const found = findUserByCredentialId(db, session.credentialId)
+
+  if (!found || found.user.id !== session.userId) {
+    throw new AuthError('Credential not found', 404)
+  }
+
+  const { credential } = found
+  const transports = credentialTransportsForClient(credential, req)
+
+  const allowCredentials = [
+    {
+      id: credential.credentialID,
+      type: 'public-key' as const,
+      ...(transports ? { transports } : {}),
+    },
+  ]
+
+  const options = await generateAuthenticationOptions({
+    rpID: webAuthn.rpId,
+    allowCredentials,
+    userVerification: 'discouraged',
+    timeout: 15000,
+  })
+
+  session.authChallenge = options.challenge
+  session.webAuthnOrigin = webAuthn.origin
+  session.webAuthnRpId = webAuthn.rpId
+  await session.save()
+
+  return options
+}
+
+export async function finishPresenceCheck(req: NextRequest, body: { id?: string }) {
+  const session = await getSession()
+  if (!session.userId || !session.credentialId || !session.presenceMode) {
+    throw new AuthError('Presence mode not active', 400)
+  }
+
+  const { authChallenge } = session
+  if (!authChallenge) {
+    throw new AuthError('No active challenge', 400)
+  }
+
+  const { webAuthnOrigin, webAuthnRpId } = session
+  if (!webAuthnOrigin || !webAuthnRpId) {
+    throw new AuthError('WebAuthn session expired, try again', 400)
+  }
+
+  const credentialIDFromBody = body.id
+  if (!credentialIDFromBody || credentialIDFromBody !== session.credentialId) {
+    throw new AuthError('Wrong credential for presence check', 400)
+  }
+
+  const db = await readDB()
+  const found = findUserByCredentialId(db, credentialIDFromBody)
+
+  if (!found || found.user.id !== session.userId) {
+    throw new AuthError('Credential not found', 404)
+  }
+
+  const { credential: storedCred } = found
+
+  let verification
+  try {
+    verification = await verifyAuthenticationResponse({
+      response: body as Parameters<typeof verifyAuthenticationResponse>[0]['response'],
+      expectedChallenge: authChallenge,
+      expectedOrigin: webAuthnOrigin,
+      expectedRPID: webAuthnRpId,
+      requireUserVerification: false,
+      authenticator: {
+        credentialID: storedCred.credentialID,
+        credentialPublicKey: toBufferFromBase64URL(storedCred.credentialPublicKey),
+        counter: storedCred.counter,
+        transports: storedCred.transports as AuthenticatorTransport[],
+      },
+    })
+  } catch (err) {
+    throw new AuthError(err instanceof Error ? err.message : 'Verification failed', 400)
+  }
+
+  if (!verification.verified) {
+    throw new AuthError('Verification failed', 400)
+  }
+
+  storedCred.counter = verification.authenticationInfo.newCounter
+  storedCred.lastUsed = new Date().toISOString()
+  await writeDB(db)
+
+  delete session.authChallenge
+  delete session.webAuthnOrigin
+  delete session.webAuthnRpId
+  session.presenceMethod = 'webauthn'
+  session.lastPresenceAt = Date.now()
+  await session.save()
+
+  return { ok: true }
+}
+
+export async function setPresenceMethod(method: 'hid' | 'webauthn') {
+  const session = await getSession()
+  if (!session.userId || !session.presenceMode) {
+    throw new AuthError('Presence mode not active', 400)
+  }
+  session.presenceMethod = method
+  if (method === 'hid') session.lastPresenceAt = Date.now()
+  await session.save()
+  return { ok: true, presenceMethod: method }
+}
+
 export async function getMe() {
   const session = await getSession()
   if (!session.userId) return null
@@ -303,6 +421,7 @@ export async function getMe() {
     credentialsCount: user.credentials.length,
     createdAt: user.createdAt,
     presenceMode: session.presenceMode ?? false,
+    presenceMethod: session.presenceMethod ?? 'none',
   }
 }
 

@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { registerWithYubiKey, loginWithYubiKey, getMe, isWebAuthnAvailable } from '@/lib/client/auth'
-import { isDesktopClient, requestYubiKeyHidAccess } from '@/lib/client/yubikey-presence'
 
 type Tab = 'login' | 'register'
 type Status = { type: 'idle' | 'loading' | 'success' | 'error'; msg?: string }
@@ -71,7 +70,6 @@ export default function LoginPage() {
     setStatus({ type: 'loading', msg: STEPS_LOGIN[1] })
     try {
       await loginWithYubiKey()
-      if (isDesktopClient()) await requestYubiKeyHidAccess().catch(() => {})
       setStatus({ type: 'success', msg: 'Авторизация прошла успешно!' })
       setTimeout(() => router.push('/dashboard'), 600)
     } catch (err: unknown) {
@@ -90,7 +88,6 @@ export default function LoginPage() {
     setStatus({ type: 'loading', msg: STEPS_REG[1] })
     try {
       await registerWithYubiKey()
-      if (isDesktopClient()) await requestYubiKeyHidAccess().catch(() => {})
       setStatus({ type: 'success', msg: 'Ключ привязан! Входим...' })
       setTimeout(() => router.push('/dashboard'), 600)
     } catch (err: unknown) {

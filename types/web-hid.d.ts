@@ -11,6 +11,8 @@ interface HIDConnectionEvent extends Event {
 interface HIDDeviceFilter {
   vendorId?: number
   productId?: number
+  usagePage?: number
+  usage?: number
 }
 
 interface HID extends EventTarget {

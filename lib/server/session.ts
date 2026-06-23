@@ -11,6 +11,8 @@ export interface SessionData {
   /** Desktop USB: сессия привязана к физическому ключу */
   presenceMode?: boolean
   credentialId?: string
+  presenceMethod?: 'none' | 'hid' | 'webauthn'
+  lastPresenceAt?: number
 }
 
 const SESSION_SECRET = process.env.SESSION_SECRET

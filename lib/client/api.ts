@@ -5,6 +5,7 @@ export interface User {
   credentialsCount: number
   createdAt: string
   presenceMode?: boolean
+  presenceMethod?: 'none' | 'hid' | 'webauthn'
 }
 
 interface ApiError {

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { logout } from '@/lib/client/auth'
 import { useYubiKeyPresence } from '@/hooks/use-yubikey-presence'
+import { PRESENCE_SETUP_HINT, PRESENCE_WEBAUTHN_HINT } from '@/lib/client/yubikey-presence'
 import type { User } from '@/lib/client/api'
 
 interface AppLayoutProps {
@@ -16,8 +17,19 @@ export function AppLayout({ children, user, onLogout }: AppLayoutProps) {
   const router = useRouter()
   const pathname = usePathname()
 
-  const { keyPresent, monitoringActive } = useYubiKeyPresence({
+  const {
+    keyPresent,
+    monitoringMethod,
+    monitoringActive,
+    needsSetup,
+    setupError,
+    enabling,
+    awaitingTouch,
+    enableHidMonitoring,
+    enableWebAuthnMonitoring,
+  } = useYubiKeyPresence({
     enabled: !!user?.presenceMode,
+    initialMethod: user?.presenceMethod ?? 'none',
     onLogout: () => {
       onLogout()
       router.push('/')
@@ -70,22 +82,57 @@ export function AppLayout({ children, user, onLogout }: AppLayoutProps) {
 
         <div style={ls.sideBottom}>
           {user?.presenceMode && (
-            <div style={ls.presenceBlock}>
-              <span
-                style={{
-                  ...ls.presenceDot,
-                  background: keyPresent === false ? 'var(--red)' : keyPresent ? 'var(--green)' : 'var(--text3)',
-                }}
-              />
-              <span style={ls.presenceText}>
-                {monitoringActive
-                  ? keyPresent === false
-                    ? 'Ключ отключён'
-                    : keyPresent
-                      ? 'Ключ подключён'
-                      : 'Проверка ключа...'
-                  : 'Мониторинг USB недоступен'}
-              </span>
+            <div style={ls.presenceWrap}>
+              <div style={ls.presenceBlock}>
+                <span
+                  style={{
+                    ...ls.presenceDot,
+                    background: keyPresent === false ? 'var(--red)' : keyPresent ? 'var(--green)' : 'var(--text3)',
+                  }}
+                />
+                <span style={ls.presenceText}>
+                  {monitoringMethod === 'webauthn'
+                    ? awaitingTouch
+                      ? 'Коснитесь YubiKey...'
+                      : 'WebAuthn-мониторинг'
+                    : monitoringActive
+                      ? keyPresent === false
+                        ? 'Ключ отключён'
+                        : keyPresent
+                          ? 'HID: ключ подключён'
+                          : 'Проверка ключа...'
+                      : needsSetup
+                        ? 'Мониторинг не включён'
+                        : 'Мониторинг USB недоступен'}
+                </span>
+              </div>
+              {needsSetup && (
+                <>
+                  {setupError === 'no_devices' && (
+                    <p style={ls.presenceHint}>{PRESENCE_SETUP_HINT}</p>
+                  )}
+                  {setupError === 'webauthn_failed' && (
+                    <p style={ls.presenceHint}>Не удалось подтвердить ключ. Проверьте, что YubiKey в USB.</p>
+                  )}
+                  <button
+                    type="button"
+                    style={ls.presenceBtn}
+                    disabled={enabling}
+                    onClick={() => void enableHidMonitoring()}
+                  >
+                    {enabling ? 'Подключение...' : 'HID-мониторинг'}
+                  </button>
+                  <button
+                    type="button"
+                    style={ls.presenceBtnSecondary}
+                    disabled={enabling}
+                    onClick={() => void enableWebAuthnMonitoring()}
+                  >
+                    WebAuthn-мониторинг
+                  </button>
+                  <p style={ls.presenceHint}>{PRESENCE_WEBAUTHN_HINT}</p>
+                </>
+              )}
             </div>
           )}
           {user && (
@@ -181,6 +228,12 @@ const ls: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     gap: 8,
   },
+  presenceWrap: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    padding: '0 0.75rem',
+  },
   presenceBlock: {
     display: 'flex',
     alignItems: 'center',
@@ -188,6 +241,35 @@ const ls: Record<string, React.CSSProperties> = {
     padding: '6px 12px',
     fontSize: 11,
     color: 'var(--text3)',
+  },
+  presenceHint: {
+    margin: 0,
+    padding: '0 12px',
+    fontSize: 10,
+    lineHeight: 1.45,
+    color: 'var(--text3)',
+  },
+  presenceBtn: {
+    margin: '0 12px',
+    padding: '6px 10px',
+    borderRadius: 6,
+    border: '1px solid rgba(108,99,255,0.25)',
+    background: 'var(--accent-bg)',
+    color: 'var(--accent2)',
+    fontSize: 11,
+    cursor: 'pointer',
+    textAlign: 'left',
+  },
+  presenceBtnSecondary: {
+    margin: '0 12px',
+    padding: '6px 10px',
+    borderRadius: 6,
+    border: '1px solid var(--border)',
+    background: 'transparent',
+    color: 'var(--text2)',
+    fontSize: 11,
+    cursor: 'pointer',
+    textAlign: 'left',
   },
   presenceDot: {
     width: 8,

@@ -148,6 +148,20 @@ export async function loginWithYubiKey() {
   return api.post('/api/auth/login/finish', assertion)
 }
 
+export async function confirmYubiKeyPresence() {
+  assertWebAuthnSupported()
+  const assertion = await runWebAuthnCeremony(
+    '/api/auth/presence/begin',
+    options => startAuthentication({ optionsJSON: options as PublicKeyCredentialRequestOptionsJSON }),
+    'login'
+  )
+  return api.post('/api/auth/presence/finish', assertion)
+}
+
+export async function setPresenceMonitoringMethod(method: 'hid' | 'webauthn') {
+  return api.post('/api/auth/presence/method', { method })
+}
+
 export async function logout() {
   await api.post('/api/auth/logout')
 }
