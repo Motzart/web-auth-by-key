@@ -27,7 +27,11 @@ export default function DashboardPage() {
         <header style={ps.header}>
           <div>
             <h1 style={ps.title}>{data?.message}</h1>
-            <p style={ps.sub}>Сессия активна · sliding session · 1 день</p>
+            <p style={ps.sub}>
+              {user?.presenceMode
+                ? 'Сессия привязана к USB-ключу · выход при отключении'
+                : 'Сессия активна · sliding session · 1 день'}
+            </p>
           </div>
           <Badge text="Authenticated" color="green" />
         </header>
@@ -48,7 +52,9 @@ export default function DashboardPage() {
               { step: '01', title: 'Challenge', desc: 'Сервер генерирует случайный байт-массив' },
               { step: '02', title: 'Подпись', desc: 'YubiKey подписывает challenge приватным ключом' },
               { step: '03', title: 'Верификация', desc: 'Сервер проверяет подпись публичным ключом' },
-              { step: '04', title: 'Сессия', desc: 'Выдаётся cookie, живёт 1 день со sliding reset' },
+              { step: '04', title: 'Сессия', desc: user?.presenceMode
+                ? 'На ноутбуке сессия живёт пока YubiKey в USB; при извлечении — автоматический выход'
+                : 'Выдаётся cookie, живёт 1 день со sliding reset' },
             ].map(item => (
               <div key={item.step} style={ps.timelineItem}>
                 <div style={ps.timelineStep}>{item.step}</div>

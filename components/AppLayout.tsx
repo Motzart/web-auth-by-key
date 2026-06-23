@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { logout } from '@/lib/client/auth'
+import { useYubiKeyPresence } from '@/hooks/use-yubikey-presence'
 import type { User } from '@/lib/client/api'
 
 interface AppLayoutProps {
@@ -14,6 +15,14 @@ interface AppLayoutProps {
 export function AppLayout({ children, user, onLogout }: AppLayoutProps) {
   const router = useRouter()
   const pathname = usePathname()
+
+  const { keyPresent, monitoringActive } = useYubiKeyPresence({
+    enabled: !!user?.presenceMode,
+    onLogout: () => {
+      onLogout()
+      router.push('/')
+    },
+  })
 
   async function handleLogout() {
     await logout()
@@ -60,6 +69,25 @@ export function AppLayout({ children, user, onLogout }: AppLayoutProps) {
         </nav>
 
         <div style={ls.sideBottom}>
+          {user?.presenceMode && (
+            <div style={ls.presenceBlock}>
+              <span
+                style={{
+                  ...ls.presenceDot,
+                  background: keyPresent === false ? 'var(--red)' : keyPresent ? 'var(--green)' : 'var(--text3)',
+                }}
+              />
+              <span style={ls.presenceText}>
+                {monitoringActive
+                  ? keyPresent === false
+                    ? 'Ключ отключён'
+                    : keyPresent
+                      ? 'Ключ подключён'
+                      : 'Проверка ключа...'
+                  : 'Мониторинг USB недоступен'}
+              </span>
+            </div>
+          )}
           {user && (
             <div style={ls.userBlock}>
               <div style={ls.avatar}>
@@ -153,6 +181,21 @@ const ls: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     gap: 8,
   },
+  presenceBlock: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '6px 12px',
+    fontSize: 11,
+    color: 'var(--text3)',
+  },
+  presenceDot: {
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+    flexShrink: 0,
+  },
+  presenceText: { lineHeight: 1.3 },
   userBlock: { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px' },
   avatar: {
     width: 30,

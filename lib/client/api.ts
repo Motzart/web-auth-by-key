@@ -4,6 +4,7 @@ export interface User {
   displayName: string
   credentialsCount: number
   createdAt: string
+  presenceMode?: boolean
 }
 
 interface ApiError {

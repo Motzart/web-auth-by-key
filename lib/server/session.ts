@@ -8,6 +8,9 @@ export interface SessionData {
   authChallenge?: string
   webAuthnOrigin?: string
   webAuthnRpId?: string
+  /** Desktop USB: сессия привязана к физическому ключу */
+  presenceMode?: boolean
+  credentialId?: string
 }
 
 const SESSION_SECRET = process.env.SESSION_SECRET

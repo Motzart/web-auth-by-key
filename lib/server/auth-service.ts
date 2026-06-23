@@ -25,6 +25,7 @@ import {
   userVerificationForRequest,
 } from './webauthn'
 import { getSession } from './session'
+import { enablePresenceSession, shouldEnablePresenceMode } from './presence'
 
 export async function beginRegistration(req: NextRequest) {
   const webAuthn = getWebAuthnContext(req)
@@ -154,9 +155,12 @@ export async function finishRegistration(req: NextRequest, body: unknown) {
   delete session.webAuthnOrigin
   delete session.webAuthnRpId
   session.userId = pendingUserId
+  if (shouldEnablePresenceMode(req)) {
+    enablePresenceSession(session, storedCredentialID)
+  }
   await session.save()
 
-  return { ok: true, userId: pendingUserId, username }
+  return { ok: true, userId: pendingUserId, username, presenceMode: !!session.presenceMode }
 }
 
 export async function beginLogin(req: NextRequest) {
@@ -276,9 +280,12 @@ export async function finishLogin(req: NextRequest, body: { id?: string }) {
   delete session.webAuthnOrigin
   delete session.webAuthnRpId
   session.userId = user.id
+  if (shouldEnablePresenceMode(req)) {
+    enablePresenceSession(session, credentialIDFromBody)
+  }
   await session.save()
 
-  return { ok: true, userId: user.id, username: user.username }
+  return { ok: true, userId: user.id, username: user.username, presenceMode: !!session.presenceMode }
 }
 
 export async function getMe() {
@@ -295,6 +302,7 @@ export async function getMe() {
     displayName: user.displayName,
     credentialsCount: user.credentials.length,
     createdAt: user.createdAt,
+    presenceMode: session.presenceMode ?? false,
   }
 }
 
